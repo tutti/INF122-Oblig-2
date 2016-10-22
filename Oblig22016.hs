@@ -3,7 +3,7 @@ import Data.Array
 import Data.Char
 import Control.Monad
 
-data Life = Alive | Dead
+data Life = Alive | Dead deriving (Eq)
 instance Show Life where
     show Alive = "O"
     show Dead = "-"
@@ -34,7 +34,28 @@ _parseLine cnf _ "" _ = cnf
 _parseLine (Config arr) line (c:str) pos = _parseLine (Config (arr // [((line, pos), (read [c] :: Life))])) line str (pos + 1)
 
 runGeneration :: Config -> Config
-runGeneration cfg = cfg -- TODO obviously todo.
+runGeneration (Config arr) =
+    let cellLife = cellLives (Config arr)
+        idx = indices arr
+        cellStatus = map cellLife idx
+    in Config (array (bounds arr) $ zip idx cellStatus)
+
+livingNeighbours :: Config -> (Int, Int) -> Int
+livingNeighbours cfg (y, x) = length [(a, b) | a <- [y-1..y+1], b <- [x-1..x+1], (a, b) /= (y, x), cellIsAlive cfg (a, b)]
+
+cellLives :: Config -> (Int, Int) -> Life
+cellLives cfg pos =
+    let living = livingNeighbours cfg pos
+    in
+        if (cellIsAlive cfg pos) && (living == 2 || living == 3) then Alive
+        else if living == 3 then Alive
+        else Dead
+
+cellIsAlive :: Config -> (Int, Int) -> Bool
+cellIsAlive (Config arr) (y, x) =
+    let (_, (by, bx)) = bounds arr
+    in
+        if x < 0 ||  y < 0 || x > bx || y > by then False else ((arr ! (y, x)) == Alive)
 
 main = do
     putStrLn "Enter your board size (width, height):"
