@@ -5,6 +5,14 @@ import System.Directory
 import Data.List
 import Data.Char
 
+{-
+    Navn: Pål Vårdal Gjerde
+
+    Tilleggsopplysninger: Lag en mappe som heter "dbs" på samme sted som denne filen ligger.
+    Det er inne i denne mappen databasefiler vil lagres.
+    Alternativt kan funksjonen filename rett under her endres til å peke på en annen sti.
+-}
+
 filename :: String -> String
 filename s = "dbs/"++s++".txt"
 
