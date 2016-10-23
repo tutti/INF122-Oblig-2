@@ -10,13 +10,11 @@ instance Show Life where
 instance Read Life where
     readsPrec _ ('O':xs) = [(Alive, xs)]
     readsPrec _ ('-':xs) = [(Dead, xs)]
+    readsPrec _ (s:xs) = [(Dead, xs)]
 
 newtype Config = Config (Array (Int, Int) Life)
 instance Show Config where
     show c = showConfig c
-
---test = Config (array ((0, 0), (2, 2)) [((0, 0), Dead), ((0, 1), Dead), ((0, 2), Alive), ((1, 0), Alive), ((1, 1), Dead), ((1, 2), Alive), ((2, 0), Dead), ((2, 1), Alive), ((2, 2), Alive)])
---test = Config (array ((0, 0), (2, 1)) [((0, 0), Alive), ((0, 1), Alive), ((1, 0), Dead), ((1, 1), Dead), ((2, 0), Alive), ((2, 1), Dead)])
 
 showConfig :: Config -> String
 showConfig (Config arr) = let (_, (_, edge)) = bounds arr in concat $ map (\(y, x) -> if x == edge then (show (arr ! (y, x)))++"\n" else show (arr ! (y, x))) $ indices arr
