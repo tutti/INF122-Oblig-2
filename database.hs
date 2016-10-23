@@ -231,7 +231,8 @@ readCols dbname = do
 _askForColumns :: [String] -> IO [String]
 _askForColumns cols = do
     col <- getLine
-    if col == "" then return cols else _askForColumns (cols++[col])
+    if not $ isAllChar col then return ["::BAD_COLUMN", col]
+    else if col == "" then return cols else _askForColumns (cols++[col])
 
 askForColumns :: IO [String]
 askForColumns = _askForColumns []
@@ -250,6 +251,7 @@ pad :: String -> Int -> String
 pad original maxlength = original++(replicate (maxlength - length original) ' ')
 
 putRow :: [Int] -> [String] -> IO ()
+putRow [] [] = error "Table has no columns."
 putRow [] _ = error "Mismatch between number of lengths and rows"
 putRow _ [] = error "Mismatch between number of lengths and rows"
 putRow [lastLength] [lastValue] = do
@@ -280,7 +282,11 @@ cmd_createDB dbname = do
     else do
         putStrLn "Enter your column names, one per line; end with empty line."
         cols <- askForColumns
-        if length cols == (length $ nub cols)
+        if length cols == 0
+        then putStrLn "[ERROR] Can't create table without columns."
+        else if head cols == "::BAD_COLUMN"
+        then putStrLn "[ERROR] Invalid column name."
+        else if length cols == (length $ nub cols)
         then do
             let db = (dbname, cols)
             saveDB db []
