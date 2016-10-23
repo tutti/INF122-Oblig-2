@@ -1,4 +1,4 @@
-module Oblig22016 where
+module GameOfLife where
 import Data.Array
 import Data.Char
 import Control.Monad
@@ -57,6 +57,7 @@ cellIsAlive (Config arr) (y, x) =
     in
         if x < 0 ||  y < 0 || x > bx || y > by then False else ((arr ! (y, x)) == Alive)
 
+main :: IO ()
 main = do
     putStrLn "Enter your board size (width, height):"
     size <- getLine
