@@ -9,27 +9,62 @@ filename s = "dbs/"++s++".txt"
 
 type DB = (String, [String])
 
-saveDB :: DB -> [String] -> IO ()
+saveDB :: DB -> [[String]] -> IO ()
 saveDB (name, colLabels) rows = do
-    let tmpname = ((filename name)++".tmp")
+    {-let tmpname = ((filename name)++".tmp")
     exists <- doesFileExist tmpname
     if exists then removeFile tmpname else return ()
-    file <- openFile tmpname WriteMode
+    (realtmpname, file) <- openTempFile "." tmpname
     hPutStrLn file $ intercalate "\0" colLabels
+    let m = map (\row -> hPutStrLn file $ intercalate "\0" row) rows
     hClose file
     exists <- doesFileExist $ filename name
     if exists then removeFile $ filename name else return ()
-    renameFile tmpname $ filename name
+    renameFile realtmpname $ filename name-}
+    let colstr = intercalate "\0" colLabels
+        rowstrs = map (intercalate "\0") rows
+        rowstr = intercalate "\n" rowstrs
+        fullstr = colstr++"\n"++rowstr
+    writeFile (filename name) fullstr
 
 readRow :: String -> [String]
 readRow "" = []
+readRow ('\0':xs) = readRow xs
 readRow row = ((takeWhile (/= '\0') row):(readRow $ dropWhile (/= '\0') row))
 
 readDB :: String -> IO (DB, [[String]])
 readDB dbname = do
     _contents <- readFile $ filename dbname
-    let contents = lines _contents
+    let contents = (length _contents) `seq` (lines _contents)
     return ((dbname, readRow $ head contents), map readRow $ tail contents)
+    {-file <- openFile (filename dbname) ReadMode
+    _contents <- hGetContents file
+    let contents = lines _contents
+    hClose file
+    return ((dbname, readRow $ head contents), map readRow $ tail contents)-}
+
+{-    withFile (filename dbname) ReadMode $ \file -> do
+        _contents <- hGetContents file
+        let contents = seq _contents $ lines _contents
+        return ((dbname, readRow $ head contents), map readRow $ tail contents)-}
+
+readCols :: String -> IO [String]
+readCols dbname = do
+{-    exists <- doesFileExist $ filename dbname
+    if not exists then do putStrLn "[ERROR] Database doesn't exist."; return [] else do
+    file <- openFile (filename dbname) ReadMode
+    header <- hGetLine file
+    hClose file
+    return (readRow header)-}
+    
+    contents <- readFile $ filename dbname
+    let header = (length contents) `seq` (head $ lines contents)
+    return (readRow header)
+
+    {-withFile (filename dbname) ReadMode $ \file -> do
+        contents <- hGetContents file
+        let header = head $ lines contents
+        return (readRow header)-}
 
 _askForColumns :: [String] -> IO [String]
 _askForColumns cols = do
@@ -38,6 +73,16 @@ _askForColumns cols = do
 
 askForColumns :: IO [String]
 askForColumns = _askForColumns []
+
+_askForValues :: [String] -> [String] -> IO [String]
+_askForValues [] temp = return temp
+_askForValues (name:names) temp = do
+    putStrLn ("Enter a value for column "++name++":")
+    value <- getLine
+    _askForValues names (temp++[value])
+
+askForValues :: [String] -> IO [String]
+askForValues names = _askForValues names []
 
 cmd_NYI :: IO ()
 cmd_NYI = putStrLn "Not yet implemented."
@@ -63,11 +108,13 @@ cmd_deleteDB dbname = do
     then putStrLn "[ERROR] Database doesn't exist."
     else removeFile $ filename dbname
 
-{-cmd_insert :: String -> IO ()
+cmd_insert :: String -> IO ()
 cmd_insert dbname = do
     exists <- doesFileExist $ filename dbname
-    if not exists then putStrLn "[ERROR] Database doesn't exist." else
-    -}
+    if not exists then putStrLn "[ERROR] Database doesn't exist." else do
+    ((_, colnames), rows) <- readDB dbname
+    newrow <- askForValues colnames
+    saveDB (dbname, colnames) (rows++[newrow])
 
 cmd_print :: String -> IO ()
 cmd_print dbname = do
@@ -93,7 +140,7 @@ main = do
         case choice of
             'a' -> cmd_createDB dbname
             'b' -> cmd_deleteDB dbname
-            'c' -> cmd_NYI
+            'c' -> cmd_insert dbname
             'd' -> cmd_print dbname
             'e' -> cmd_NYI
             'f' -> cmd_NYI
