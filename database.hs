@@ -39,59 +39,19 @@ readDB dbname = do
 
 getValue :: DB -> [String] -> String -> String
 getValue (_, []) _ colname = error ("Column "++colname++" not found.")
-getValue (dbname, (fcol:colnames)) (fval:rows) colname = if fcol == colname then fval else getValue (dbname, colnames) rows colname
+getValue (dbname, (fcol:colnames)) (fval:row) colname = if fcol == colname then fval else getValue (dbname, colnames) row colname
 
-readCols :: String -> IO [String]
-readCols dbname = do
-    contents <- readFile $ filename dbname
-    let header = (length contents) `seq` (head $ lines contents)
-    return (readRow header)
-
-_askForColumns :: [String] -> IO [String]
-_askForColumns cols = do
-    col <- getLine
-    if col == "" then return cols else _askForColumns (cols++[col])
-
-askForColumns :: IO [String]
-askForColumns = _askForColumns []
-
-_askForValues :: [String] -> [String] -> IO [String]
-_askForValues [] temp = return temp
-_askForValues (name:names) temp = do
-    putStrLn ("Enter a value for column "++name++":")
-    value <- getLine
-    _askForValues names (temp++[value])
-
-askForValues :: [String] -> IO [String]
-askForValues names = _askForValues names []
-
-pad :: String -> Int -> String
-pad original maxlength = original++(replicate (maxlength - length original) ' ')
-
-putRow :: [Int] -> [String] -> IO ()
-putRow [] _ = error "Mismatch between number of lengths and rows"
-putRow _ [] = error "Mismatch between number of lengths and rows"
-putRow [lastLength] [lastValue] = do
-    putStr $ pad lastValue lastLength
-    putStrLn ""
-putRow (firstLength:lengths) (firstValue:rest) = do
-    putStr $ pad firstValue firstLength
-    putStr " "
-    putRow lengths rest
-
-putRows :: [Int] -> [[String]] -> IO ()
-putRows lengths [] = return ()
-putRows lengths (first:rest) = do
-    putRow lengths first
-    putRows lengths rest
-
-putRowSeparator :: [Int] -> IO ()
-putRowSeparator lengths = putStrLn $ replicate (length lengths + sum lengths - 1) '-'
+setValue :: DB -> [String] -> String -> String -> [String]
+setValue (_, []) _ colname _ = error ("Column "++colname++" not found.")
+setValue (dbname, (fcol:colnames)) (fval:row) colname val = if fcol == colname then (val:row) else (fval:setValue (dbname, colnames) row colname val)
 
 char = ['A'..'Z']++['a'..'z']++['0'..'9']++"_"
 
 isChar :: Char -> Bool
 isChar c = c `elem` char
+
+isAllChar :: String -> Bool
+isAllChar s = all isChar s
 
 isInt :: String -> Bool
 isInt s = all isDigit s
@@ -124,7 +84,7 @@ tokenize ('&':rest) = "&":tokenize rest
 tokenize ('|':rest) = "|":tokenize rest
 tokenize ('(':rest) = "(":tokenize rest
 tokenize (')':rest) = ")":tokenize rest
-tokenize ('"':rest) = "\"":tokenize rest
+tokenize ('"':rest) = "\"":(takeWhile (/= '"') rest):"\"":tokenize ( tail (dropWhile (/= '"') rest) )
 tokenize (s:xs)
     | isDigit s = (takeWhile isDigit (s:xs)):tokenize (dropWhile isDigit xs)
     | isChar s = (takeWhile isChar (s:xs)):tokenize (dropWhile isChar xs)
@@ -160,8 +120,21 @@ combine p1 op p2
     | otherwise = error "Unknown operator."
 
 parse :: String -> Predicate
+parse "" = Bool (Number 0) "=" (Number 0)
 parse s =
     let
+        {-
+            NON-OBVIOUS TRICK:
+            The parse recursion reads from left to right, in the manner of "create an operation out of this and the rest".
+            This causes all the operations to fold right. However, this causes the calculations to be done right to left.
+            To solve this, the token list is simply reversed before it's handed to the parser. The parser, in turn,
+            is aware of this, and stores its operations in re-reversed order, and reads "(" and ")" as the other of the
+            pair. The end result is a left folded list of operations done.
+
+            Do note that the rules of precedence are also observed, not only the left to right order (i.e. multiplication
+            happens before addition, and so on). This is in fact what made it difficult to use less trick-y methods of
+            achieving left to right ordering.
+        -}
         tokens = reverse $ tokenize s
         (predicate, _) = parsePredicate tokens 0
     in predicate
@@ -249,6 +222,53 @@ testPredicate (Combine p1 op p2) db row =
         "|" -> val1 || val2
         otherwise -> error "Can't evaluate combined expression."
 
+readCols :: String -> IO [String]
+readCols dbname = do
+    contents <- readFile $ filename dbname
+    let header = (length contents) `seq` (head $ lines contents)
+    return (readRow header)
+
+_askForColumns :: [String] -> IO [String]
+_askForColumns cols = do
+    col <- getLine
+    if col == "" then return cols else _askForColumns (cols++[col])
+
+askForColumns :: IO [String]
+askForColumns = _askForColumns []
+
+_askForValues :: [String] -> [String] -> IO [String]
+_askForValues [] temp = return temp
+_askForValues (name:names) temp = do
+    putStrLn ("Enter a value for column "++name++":")
+    value <- getLine
+    _askForValues names (temp++[value])
+
+askForValues :: [String] -> IO [String]
+askForValues names = _askForValues names []
+
+pad :: String -> Int -> String
+pad original maxlength = original++(replicate (maxlength - length original) ' ')
+
+putRow :: [Int] -> [String] -> IO ()
+putRow [] _ = error "Mismatch between number of lengths and rows"
+putRow _ [] = error "Mismatch between number of lengths and rows"
+putRow [lastLength] [lastValue] = do
+    putStr $ pad lastValue lastLength
+    putStrLn ""
+putRow (firstLength:lengths) (firstValue:rest) = do
+    putStr $ pad firstValue firstLength
+    putStr " "
+    putRow lengths rest
+
+putRows :: [Int] -> [[String]] -> IO ()
+putRows lengths [] = return ()
+putRows lengths (first:rest) = do
+    putRow lengths first
+    putRows lengths rest
+
+putRowSeparator :: [Int] -> IO ()
+putRowSeparator lengths = putStrLn $ replicate (length lengths + sum lengths - 1) '-'
+
 cmd_NYI :: IO ()
 cmd_NYI = putStrLn "Not yet implemented."
 
@@ -279,10 +299,15 @@ cmd_insert dbname = do
     if not exists then putStrLn "[ERROR] Database doesn't exist." else do
     ((_, colnames), rows) <- readDB dbname
     newrow <- askForValues colnames
-    saveDB (dbname, colnames) (rows++[newrow])
+    let filteredrow = [field | field <- newrow, field /= "" ]
+    if length filteredrow /= length colnames
+    then putStrLn "[ERROR] You can't leave columns empty."
+    else saveDB (dbname, colnames) (rows++[filteredrow])
 
 cmd_print :: String -> IO ()
 cmd_print dbname = do
+    exists <- doesFileExist $ filename dbname
+    if not exists then putStrLn "[ERROR] Database doesn't exist." else do
     ((_, colnames), rows) <- readDB dbname
     let lengths = maxLengths (colnames:rows)
     putRowSeparator lengths
@@ -293,6 +318,8 @@ cmd_print dbname = do
 
 cmd_select :: String -> IO ()
 cmd_select dbname = do
+    exists <- doesFileExist $ filename dbname
+    if not exists then putStrLn "[ERROR] Database doesn't exist." else do
     (db, rows) <- readDB dbname
     putStrLn "Enter a predicate:"
     predicateStr <- getLine
@@ -305,6 +332,40 @@ cmd_select dbname = do
     putRowSeparator lengths
     putRows lengths selected
     putRowSeparator lengths
+
+cmd_delete :: String -> IO ()
+cmd_delete dbname = do
+    exists <- doesFileExist $ filename dbname
+    if not exists then putStrLn "[ERROR] Database doesn't exist." else do
+    (db, rows) <- readDB dbname
+    putStrLn "Enter a predicate:"
+    predicateStr <- getLine
+    let predicate = parse predicateStr
+        remaining = [row | row <- rows, not $ testPredicate predicate db row]
+    putStrLn ("Warning! This will delete "++(show $ length rows - length remaining)++" rows. Are you sure? [yes/no]")
+    sure <- getLine
+    if sure == "yes" then
+        saveDB db remaining
+    else return ()
+
+cmd_update :: String -> IO ()
+cmd_update dbname = do
+    exists <- doesFileExist $ filename dbname
+    if not exists then putStrLn "[ERROR] Database doesn't exist." else do
+    (db, rows) <- readDB dbname
+    putStrLn "Enter a predicate for which rows to update:"
+    predicateStr <- getLine
+    let predicate = parse predicateStr
+        (_, colnames) = db
+        changing = [row | row <- rows, testPredicate predicate db row]
+    putStrLn ("Warning! This will update "++(show $ length changing)++" rows. Are you sure? [yes/no]")
+    sure <- getLine
+    if sure == "yes" then do
+        putStrLn "Hit Enter on any column to leave it unchanged."
+        temprow <- askForValues colnames
+        let newrows = map (\row -> if testPredicate predicate db row then [if fst val /= "" then fst val else snd val | val <- zip temprow row] else row) rows
+        saveDB db newrows
+    else return ()
 
 main :: IO ()
 main = do
@@ -328,8 +389,8 @@ main = do
             'c' -> cmd_insert dbname
             'd' -> cmd_print dbname
             'e' -> cmd_select dbname
-            'f' -> cmd_NYI
-            'g' -> cmd_NYI
+            'f' -> cmd_delete dbname
+            'g' -> cmd_update dbname
             _ -> putStrLn "Unknown command."
         main
     else return ()
