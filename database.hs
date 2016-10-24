@@ -8,9 +8,47 @@ import Data.Char
 {-
     Navn: Pål Vårdal Gjerde
 
-    Tilleggsopplysninger: Lag en mappe som heter "dbs" på samme sted som denne filen ligger.
-    Det er inne i denne mappen databasefiler vil lagres.
-    Alternativt kan funksjonen filename rett under her endres til å peke på en annen sti.
+    Tilleggsopplysninger:
+
+    Mappen dbs er der alle databasefilene blir lagret. Dette kan endres ved å
+    endre funksjonen filename rett under denne kommentaren.
+
+    To eksempeldatabaser er inkludert med innleveringen - en med liste over de
+    første 50 pokémon, og en med de åtte ulike konfigurasjonene av boolske
+    verdier. Disse kan brukes for å demonstrere predikat-språket under.
+
+    Predikater kan skrives etter følgende språk:
+    <Digit>             ::= 0 | ... | 9
+    <Int>               ::= <Digit> | <Int><Digit>
+    <StrictChar>        ::= a | ... | z | A | ... | Z | _
+    <Char>              ::= <StrictChar> | <Digit>
+    <FreeChar>          ::= {any encoded character except "}
+    <ColumnName>        ::= <FirstChar> | <ColumnName><Char>
+    <IntOp>             ::= + | - | * | /
+    <BoolOp>            ::= = | != | > | >= | < | <=
+    <CombineOp>         ::= & | && | '|' | '||'
+    <LiteralChars>      ::= <Char> | <LiteralChars><Char>
+    <Literal>           ::= "<String>"
+    <String>            ::= <ColumnName> | <Literal>
+    <Number>            ::= <ColumnName> | <Int>
+    <Calculation>       ::= <Number> | <Number> <IntOp> <Number> | <Calculation> <IntOp> <Number> | (<Calculation>)
+    <BoolStatement>     ::= <Calculation> <BoolOp> <Calculation> | <String> <BoolOp> <String> | (<BoolStatement>)
+    <Predicate>         ::= <BoolStatement> | <Predicate> <CombineOp> <BoolStatement> | (<Predicate>)
+
+    (jeg tror dette er rett, er ikke dette jeg er god til).
+
+    Uttrykk blir evaluert i matematisk rekkefølge - først ting i parenteser, så */, så +-,
+    så sammenligninger (=, != osv) og til slutt kombinasjoner (&, |).
+
+    Eksempeluttrykk:
+        type1 = "Grass" | type2 = "Grass"       -- Liste av gress-pokémon
+        number > 25 & type2 = "-"               -- Liste av pokémon over #25 med bare en type
+
+    Eksempeluttrykk på bool-tabell
+        (p = 1 | q = 1) & r = 1                 -- Gir A, C og E
+        p = 1 | (q = 1 & r = 1)                 -- Gir A, B, C, D og E.
+        (p = 1 | q = 1) & (p = 0 | q = 0)       -- Gir C, D, E og F.
+
 -}
 
 filename :: String -> String
@@ -53,13 +91,18 @@ setValue :: DB -> [String] -> String -> String -> [String]
 setValue (_, []) _ colname _ = error ("Column "++colname++" not found.")
 setValue (dbname, (fcol:colnames)) (fval:row) colname val = if fcol == colname then (val:row) else (fval:setValue (dbname, colnames) row colname val)
 
-char = ['A'..'Z']++['a'..'z']++['0'..'9']++"_"
+firstChar = ['A'..'Z']++['a'..'z']++"_"
+char = firstChar++['0'..'9']
+
+isFirstChar :: Char -> Bool
+isFirstChar c = c `elem` firstChar
 
 isChar :: Char -> Bool
 isChar c = c `elem` char
 
-isAllChar :: String -> Bool
-isAllChar s = all isChar s
+isValidString :: String -> Bool
+isValidString [] = True
+isValidString (s:xs) = isFirstChar s && all isChar xs
 
 isInt :: String -> Bool
 isInt s = all isDigit s
@@ -95,7 +138,7 @@ tokenize (')':rest) = ")":tokenize rest
 tokenize ('"':rest) = "\"":(takeWhile (/= '"') rest):"\"":tokenize ( tail (dropWhile (/= '"') rest) )
 tokenize (s:xs)
     | isDigit s = (takeWhile isDigit (s:xs)):tokenize (dropWhile isDigit xs)
-    | isChar s = (takeWhile isChar (s:xs)):tokenize (dropWhile isChar xs)
+    | isFirstChar s = (takeWhile isChar (s:xs)):tokenize (dropWhile isChar xs)
     | otherwise = error ("Syntax error: Unexpected '"++[s]++"'.")
 
 order4 = ["*", "/"]
@@ -239,7 +282,7 @@ readCols dbname = do
 _askForColumns :: [String] -> IO [String]
 _askForColumns cols = do
     col <- getLine
-    if not $ isAllChar col then return ["::BAD_COLUMN", col]
+    if not $ isValidString col then return ["::BAD_COLUMN", col]
     else if col == "" then return cols else _askForColumns (cols++[col])
 
 askForColumns :: IO [String]

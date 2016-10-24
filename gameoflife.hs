@@ -3,6 +3,19 @@ import Data.Array
 import Data.Char
 import Control.Monad
 
+{-
+    Navn: Pål Vårdal Gjerde
+
+    Tilleggsopplysninger:
+    Størrelse på brettet skal angis som to heltall. De skrives inn på samme
+    linje, separert av mellomrom, og paret kan omsluttes av en parentes.
+    Eventuelle andre tegn etter hvert tall vil kastes.
+
+    Selve brettet skrives inn på samme form som det vises, med O for levende
+    celler og - for døde. Hver linje MÅ ha like mange celler som den skal ha,
+    ikke mer eller mindre, ellers vil du få feil.
+-}
+
 data Life = Alive | Dead deriving (Eq)
 instance Show Life where
     show Alive = "O"
