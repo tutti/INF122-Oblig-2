@@ -9,11 +9,12 @@ import Control.Monad
     Tilleggsopplysninger:
     Størrelse på brettet skal angis som to heltall. De skrives inn på samme
     linje, separert av mellomrom, og paret kan omsluttes av en parentes.
-    Eventuelle andre tegn etter hvert tall vil kastes.
+    Eventuelle andre tegn etter hvert tall vil kastes (derfor er f. eks
+    "(10, 10)" lov).
 
-    Selve brettet skrives inn på samme form som det vises, med O for levende
-    celler og - for døde. Hver linje MÅ ha like mange celler som den skal ha,
-    ikke mer eller mindre, ellers vil du få feil.
+    Eksempelbrett:
+    Sett størrelse til 38 20
+    [((5,1),Alive),((5,2),Alive),((6,1),Alive),((6,2),Alive),((3,14),Alive),((3,13),Alive),((4,12),Alive),((5,11),Alive),((6,11),Alive),((7,11),Alive),((8,12),Alive),((9,13),Alive),((9,14),Alive),((6,15),Alive),((4,16),Alive),((5,17),Alive),((6,17),Alive),((6,18),Alive),((7,17),Alive),((8,16),Alive),((2,23),Alive),((3,22),Alive),((3,21),Alive),((4,22),Alive),((4,21),Alive),((5,22),Alive),((5,21),Alive),((6,23),Alive),((1,25),Alive),((2,25),Alive),((6,25),Alive),((7,25),Alive),((3,35),Alive),((3,36),Alive),((4,35),Alive),((4,36),Alive)]
 -}
 
 data Life = Alive | Dead deriving (Eq)
@@ -23,7 +24,10 @@ instance Show Life where
 instance Read Life where
     readsPrec _ ('O':xs) = [(Alive, xs)]
     readsPrec _ ('-':xs) = [(Dead, xs)]
-    readsPrec _ (s:xs) = [(Dead, xs)]
+    readsPrec _ s = 
+        if take 5 s == "Alive" then [(Alive, drop 5 s)]
+        else if take 4 s == "Dead" then [(Dead, drop 4 s)]
+        else error ("Can't read Life from "++s)
 
 newtype Config = Config (Array (Int, Int) Life)
 instance Show Config where
@@ -32,17 +36,40 @@ instance Show Config where
 showConfig :: Config -> String
 showConfig (Config arr) = let (_, (_, edge)) = bounds arr in concat $ map (\(y, x) -> if x == edge then (show (arr ! (y, x)))++"\n" else show (arr ! (y, x))) $ indices arr
 
--- TODO Maybe some better checks here
 parseSize :: String -> (Int, Int)
 parseSize ('(':xs) = if last xs == ')' then parseSize $ init xs else error "Invalid numbers."
 parseSize s = let w = words s in (read $ takeWhile isDigit (w !! 0) :: Int, read (w !! 1) :: Int)
 
-parseLine :: Int -> String -> Config -> Config
-parseLine line str cnf = _parseLine cnf line str 0
-
-_parseLine :: Config -> Int -> String -> Int -> Config
-_parseLine cnf _ "" _ = cnf
-_parseLine (Config arr) line (c:str) pos = _parseLine (Config (arr // [((line, pos), (read [c] :: Life))])) line str (pos + 1)
+parseCells :: [((Int, Int), Life)] -> String -> [((Int, Int), Life)]
+parseCells _ ('[':str) = parseCells [] str
+parseCells prev ('(':'(':str) =
+    let n1 = takeWhile isDigit str
+        str1' = dropWhile isDigit str
+        comma1 = head str1'
+        str1 = dropWhile isSpace $ tail str1'
+        n2 = takeWhile isDigit str1
+        str2' = dropWhile isDigit str1
+        paren1 = head str2'
+        comma2 = str2' !! 1
+        str2 = dropWhile isSpace $ drop 2 str2'
+        [(life, str3')] = readsPrec 0 str2 :: [(Life, String)]
+        paren2 = head str3'
+        str3 = tail str3'
+    in
+        if
+            comma1 /= ','
+            || comma2 /= ','
+            || paren1 /= ')'
+            || paren2 /= ')'
+        then
+            error "Invalid board state."
+        else
+            let num1 = read n1 :: Int
+                num2 = read n2 :: Int
+            in
+                parseCells (prev ++ [((num1, num2), life)]) (if head str3 == ',' then dropWhile isSpace $ tail str3 else str3)
+parseCells prev (']':xs) = prev
+parseCells _ s = error ("Invalid cell "++s)
 
 runGeneration :: Config -> Config
 runGeneration (Config arr) =
@@ -74,10 +101,10 @@ main = do
     size <- getLine
     let (x, y) = parseSize size
     putStrLn "Enter your initial board:"
-    lines <- replicateM y getLine
-    let parseLines = foldr (.) id [parseLine i line | (i, line) <- zip [0..(length lines - 1)] lines]
-        config = parseLines (Config (array ((0, 0), (y-1, x-1)) []))
-
+    initial <- getLine
+    let cells = parseCells [] initial
+        emptyList = [((a, b), Dead) | a <- [0..y-1], b <- [0..x-1]]
+        config = Config (array ((0, 0), (y-1, x-1)) (emptyList++cells) )
     mainLoop config
 
 mainLoop :: Config -> IO ()
